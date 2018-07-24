@@ -1,3 +1,5 @@
+# Orchestrator
+
 ClearMetal runs on a distributed services architecture.  This architecture has various components that need to be synchronized to complete our daily pipeline.  
 
 In order to run this pipeline, we need an orchestrator that can schedule and synchronize tasks to be run.  

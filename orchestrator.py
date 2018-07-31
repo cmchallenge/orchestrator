@@ -1,4 +1,7 @@
 import logging
+import os.path
+import time
+from threading import Lock
 
 logger = logging.getLogger(__name__)
 
@@ -13,12 +16,14 @@ def Orchestrator(object):
 
     '''
     def __init__(self):
+        # DAG of tasks to be run
         self.tasks = {}
-    
-    def run(self):
-        pass
 
-    def schedule(self, task_name, task_path, execution_time = None, dependencies = None):
+        # Ensures that there aren't any issues with concurrent threads adding/removing
+        # tasks.
+        self.mutex = Lock()
+
+    def schedule(self, task_name, task_path, execution_time = None, depends_on = None):
         '''Schedule a task to be executed by the system. Regardless of the provided 
         execution time, a task will not be executed until all of its dependencies have
         been executed as well.
@@ -34,15 +39,54 @@ def Orchestrator(object):
             task. If the provided time is in the past, the task will be executed as soon
             as possible.
 
-            dependencies(list(int)): A list of dependency name which must be run before 
+            depends_on(list(int)): A list of dependencies which must be run before 
             the task is executed. If a dependency is not found in the tasks list, it will 
             be ignored.
 
         Returns:
             The return value is the number of milliseconds to wait from now until the 
-            task is executed. Returns -1 if there was an error in scheduling the task.
+            task is executed. This will be zero if the task was scheduled in the past.
+            Returns -1 if there was an error in scheduling the task.
         '''
-        pass
+        # Be overly safe. Everything is a critical section.
+        self.mutex.acquire()
+
+        # No duplicate tasks
+        if task_name in self.tasks:
+            return -1
+
+        if execution_time == None:
+            # Execute now if time is unspecified.
+            execution_time = int(time.time() * 1000)
+
+        if depends_on == None:
+            depends_on = set()
+        
+        # Drop dependencies that aren't in the set of tasks to be scheduled.
+        depends_on = {dep for dep in depends_on if dep in self.tasks}
+
+        # Add task as dependent. Needed if the parent task gets cancelled.
+        for dep in depends_on:
+            self.tasks['dep']['dependents'].add(task_name)
+
+        task = {
+            'task_path' : task_path,
+            'execution_time' : execution_time,
+            'depends_on' : depends_on,
+            'dependents' : set()
+        }
+
+        self.tasks[task_name] = task
+
+        self.mutex.release()
+
+        # determine the time needed to wait for the task. If this was scheduled in the past,
+        # then return 0.
+        wait_time = execution_time - time.time()
+        if time diff < 0:
+            time_diff = 0
+
+        return time_diff
 
     def cancel(self, task_name):
         '''
@@ -57,4 +101,7 @@ def Orchestrator(object):
         Returns:
             The return value is a list of tasks that have been cancelled.
         '''
-        pass
+        self.mutex.acquire()
+
+
+        self.mutex.release()

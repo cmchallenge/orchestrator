@@ -18,6 +18,7 @@ class Orchestrator(object):
     def __init__(self):
         # DAG of tasks to be run
         self.tasks = {}
+        self.timer = {}
 
         # Ensures that there aren't any issues with concurrent threads adding/removing
         # tasks.
@@ -118,3 +119,11 @@ class Orchestrator(object):
 
         self.mutex.release()
         return True
+
+    def remove(self, task_name):
+        '''Identical to Orchestrator.cancel
+
+        Exists in the API to logically distinguish removing a task because it has executed versus
+        canceling a task before it has been run.
+        '''
+        return self.cancel(task_name)

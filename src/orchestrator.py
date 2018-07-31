@@ -5,7 +5,7 @@ from threading import Lock
 
 logger = logging.getLogger(__name__)
 
-def Orchestrator(object):
+class Orchestrator(object):
     '''The orchestrator class contains methods for scheduling tasks to be executed.
     Each task is a Python script. When a task is scheduled it is given a name, and 
     an optional list of names to serve as dependencies. The dependencies of a task
@@ -30,7 +30,7 @@ def Orchestrator(object):
 
         Arguments:
             task_name(str): A unique name for the task. If the task name is not unique
-            then the value -1 will be returned.
+            then False will be returned.
 
             task_path(str): The absolute path to an executable Python file on the system
             which is to be executed at the provided execution_time.
@@ -44,16 +44,15 @@ def Orchestrator(object):
             be ignored.
 
         Returns:
-            The return value is the number of milliseconds to wait from now until the 
-            task is executed. This will be zero if the task was scheduled in the past.
-            Returns -1 if there was an error in scheduling the task.
+            True if the task was scheduled successfully, False otherwise.
         '''
         # Be overly safe. Everything is a critical section.
         self.mutex.acquire()
 
         # No duplicate tasks
         if task_name in self.tasks:
-            return -1
+            self.mutex.release()
+            return False
 
         if execution_time == None:
             # Execute now if time is unspecified.
@@ -78,30 +77,44 @@ def Orchestrator(object):
 
         self.tasks[task_name] = task
 
+        # We are done reading/writing to the tasks graph
         self.mutex.release()
-
-        # determine the time needed to wait for the task. If this was scheduled in the past,
-        # then return 0.
-        wait_time = execution_time - time.time()
-        if time diff < 0:
-            time_diff = 0
-
-        return time_diff
+        return False
 
     def cancel(self, task_name):
         '''
         Cancel a task that has been scheduled to be run. If the task has already been
         executed, then no action is taken. If the task has not been run, then it will
-        be un-scheduled as well as any tasks that are dependent on the cancelled task.
+        be un-scheduled.
 
         Arguments:
             task_name(str): The unique name of the task to be cancelled. If no such task
             is found, then no action is taken.
 
         Returns:
-            The return value is a list of tasks that have been cancelled.
+            True if the task was successfully cancelled, False if unsucessful.
         '''
         self.mutex.acquire()
 
+        # Can't cancel a task which doesn't exist.
+        if task_name not in self.tasks:
+            self.mutex.release()
+            return False
+        
+        # If we do not remove downstream dependencies, then cancel the dependency 
+        dependents = self.tasks[task_name]['dependents']
+        depends_on = self.tasks[task_name]['depends_on']
+
+        # dependent tasks no longer need to wait for this one
+        for dependent in dependents:
+            self.tasks[dependent]['depends_on'].remove(task_name)
+
+        # this task is no longer a dependent of other tasks.
+        for depends in depends_on:
+            self.tasks[depends]['dependents'].remove(task_name)
+
+        self.task.pop[task_name]
+        # schedule freed up tasks here
 
         self.mutex.release()
+        return True

@@ -66,7 +66,7 @@ class Orchestrator(object):
 
         # Add task as dependent. Needed if the parent task gets cancelled.
         for dep in depends_on:
-            self.tasks['dep']['dependents'].add(task_name)
+            self.tasks[dep]['dependents'].add(task_name)
 
         task = {
             'task_path' : task_path,
@@ -79,7 +79,7 @@ class Orchestrator(object):
 
         # We are done reading/writing to the tasks graph
         self.mutex.release()
-        return False
+        return True
 
     def cancel(self, task_name):
         '''
@@ -113,7 +113,7 @@ class Orchestrator(object):
         for depends in depends_on:
             self.tasks[depends]['dependents'].remove(task_name)
 
-        self.task.pop[task_name]
+        self.tasks.pop(task_name)
         # schedule freed up tasks here
 
         self.mutex.release()

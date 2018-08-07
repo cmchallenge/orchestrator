@@ -36,14 +36,16 @@ class TestOrchestrator(unittest.TestCase):
                 'task_path': '/not/a/real/path.py', 
                 'execution_time': now + 314159, 
                 'depends_on': set(), 
-                'dependents': {'b'}
+                'dependents': {'b'},
+                'parameters' : []
                 }, 
             'b': {
                 'task_name': 'b',
                 'task_path': '/another/fake/path.py',
                 'execution_time': now + 414159,
                 'depends_on': {'a'},
-                'dependents': set()
+                'dependents': set(),
+                'parameters' : []
                 }
             }
 
@@ -58,7 +60,8 @@ class TestOrchestrator(unittest.TestCase):
                 'task_path': '/another/fake/path.py', 
                 'execution_time': now + 414159,
                 'depends_on': set(),
-                'dependents': set()
+                'dependents': set(),
+                'parameters' : []
             }
         }
 

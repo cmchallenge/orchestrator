@@ -48,10 +48,10 @@ class Orchestrator(object):
         # tasks.
         self.mutex = Lock()
 
-    def schedule(self, task_name, task_path, execution_time = None, depends_on = None):
+    def schedule(self, task_name, task_path, execution_time = None, depends_on = None, parameters = None):
         '''Schedule a task to be executed by the system. Regardless of the provided 
         execution time, a task will not be executed until all of its dependencies have
-        been executed as well.
+        been executed as well. A task is simply a python file.
 
         Arguments:
             task_name(str): A unique name for the task. If the task name is not unique
@@ -66,6 +66,8 @@ class Orchestrator(object):
             depends_on(list(int)): A list of dependencies which must be run before 
             the task is executed. If a dependency is not found in the tasks list, it will 
             be ignored.
+
+            parameters(list): A list of parameters to pass to the 
 
         Returns:
             The time (in ms) until the task is to be executed. 
@@ -84,6 +86,9 @@ class Orchestrator(object):
         if execution_time == None:
             # Execute now if time is unspecified.
             execution_time = now_in_ms
+
+        if parameters is None:
+            parameters = []
 
         if depends_on == None:
             depends_on = set()
@@ -110,7 +115,8 @@ class Orchestrator(object):
             'execution_time' : execution_time,
             'depends_on' : depends_on,
             'dependents' : set(),
-            'output_file' : output_file
+            'output_file' : output_file,
+            'parameters' : parameters
         }
 
         self.tasks[task_name] = task
@@ -211,11 +217,12 @@ class _TaskExecutor(object):
         '''
         task = self.orchestrator.tasks[self.task_name]
         task_path = task['task_path']
+        parameters = task['parameters']
         
         # open the output file for writing
         with open(task['output_file'], 'w+') as output_file:
             # execute the python script in a subprocess
-            process = subprocess.Popen(['python', task_path], stdout=output_file, stderr=output_file)
+            process = subprocess.Popen(['python', task_path, *parameters], stdout=output_file, stderr=output_file)
             # wait until it is finished executing to close the file.
             process.wait()
 

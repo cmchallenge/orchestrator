@@ -49,9 +49,8 @@ class Orchestrator(object):
         self.mutex = Lock()
 
     def schedule(self, task_name, task_path, execution_time = None, depends_on = None, parameters = None, recur_period = None):
-        '''Schedule a task to be executed by the system. Regardless of the provided 
-        execution time, a task will not be executed until all of its dependencies have
-        been executed as well. A task is simply a python file.
+        '''Schedule a task to be executed by the system. A task can not be executed until all of
+        its dependencies have been executed as well. A task is simply a python file.
 
         Arguments:
             task_name(str): A unique name for the task. If the task name is not unique
@@ -235,8 +234,14 @@ class _TaskExecutor(object):
             # wait until it is finished executing to close the file.
             process.wait()
 
+        with open(task['output_file'] + "_returncode", "w+") as task_return_code_file:
+            # write return code to output file
+            task_return_code_file.write(str(process.returncode))
+
+
         self.orchestrator.remove(self.task_name)
         
+        # If the task is to recur, schedule it now.
         recur_period = task['recur_period']
         if recur_period is not None:
             task_name = task['task_name']

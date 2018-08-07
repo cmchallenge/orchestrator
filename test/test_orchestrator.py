@@ -37,7 +37,8 @@ class TestOrchestrator(unittest.TestCase):
                 'execution_time': now + 314159, 
                 'depends_on': set(), 
                 'dependents': {'b'},
-                'parameters' : []
+                'parameters' : [],
+                'recur_period' : None
                 }, 
             'b': {
                 'task_name': 'b',
@@ -45,7 +46,8 @@ class TestOrchestrator(unittest.TestCase):
                 'execution_time': now + 414159,
                 'depends_on': {'a'},
                 'dependents': set(),
-                'parameters' : []
+                'parameters' : [],
+                'recur_period' : None
                 }
             }
 
@@ -61,7 +63,8 @@ class TestOrchestrator(unittest.TestCase):
                 'execution_time': now + 414159,
                 'depends_on': set(),
                 'dependents': set(),
-                'parameters' : []
+                'parameters' : [],
+                'recur_period' : None
             }
         }
 

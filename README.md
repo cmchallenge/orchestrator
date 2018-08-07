@@ -52,8 +52,6 @@ A task can be listed as recurring. The `recur_period` parameters specifies the t
 between recurring executions of the task. For example, to run a task every 5.5 seconds:
 
 ```Python
-import time 
-
 orch = Orchestrator()
 orch.schedule("start_my_roomba", "./roomba_exec.py",recur_period = 5500)
 ```

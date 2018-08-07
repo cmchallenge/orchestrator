@@ -1,7 +1,10 @@
 import logging
 import os.path
 import time
-from threading import Lock
+import tempfile
+from orchestrator_errors import SchedulingException, NoSuchDirectoryException
+from threading import Lock, Timer
+import subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -15,10 +18,31 @@ class Orchestrator(object):
     Future work: cache to disk so we can recover from server failure.
 
     '''
-    def __init__(self):
+    def __init__(self, output_directory=None):
+        '''Create an Orchestrator.
+
+        Arguments:
+            output_directory(str): pathname of the directory in which to put the 
+            files containing the stdout and stderr of the executed tasks.
+        '''
         # DAG of tasks to be run
         self.tasks = {}
         self.timer = {}
+
+        # These are tasks that have no dependencies and therefore have timer object associated with them.
+        # Each task has a timer object. In the future we could sort the tasks in order of scheduled execution 
+        # time, and only create a timer for the next task to execute.
+        self.next_to_execute = {}
+
+        # Create a default output directory.
+        if output_directory is None:
+            output_directory = tempfile.mkdtemp()
+            logger.info("No output directory specified, using {}".format(output_directory))
+
+        if not os.path.isdir(output_directory):
+            raise NoSuchDirectoryException('A valid output directory was not specified for orchestrator log files.')
+        self.output_directory = output_directory
+
 
         # Ensures that there aren't any issues with concurrent threads adding/removing
         # tasks.
@@ -31,33 +55,35 @@ class Orchestrator(object):
 
         Arguments:
             task_name(str): A unique name for the task. If the task name is not unique
-            then False will be returned.
+            then an exception will be thrown.
 
             task_path(str): The absolute path to an executable Python file on the system
             which is to be executed at the provided execution_time.
 
             execution_time(int): The epoch time (in milliseconds) at which to execute the 
-            task. If the provided time is in the past, the task will be executed as soon
-            as possible.
+            task. If the provided time is in the past, an exception will be thrown.
 
             depends_on(list(int)): A list of dependencies which must be run before 
             the task is executed. If a dependency is not found in the tasks list, it will 
             be ignored.
 
         Returns:
-            True if the task was scheduled successfully, False otherwise.
+            The time (in ms) until the task is to be executed. 
         '''
         # Be overly safe. Everything is a critical section.
         self.mutex.acquire()
 
+        # get the current time
+        now_in_ms = int(time.time() * 1000)
+
         # No duplicate tasks
         if task_name in self.tasks:
             self.mutex.release()
-            return False
+            raise SchedulingException("The task name \"{}\" was not unique".format(task_name))
 
         if execution_time == None:
             # Execute now if time is unspecified.
-            execution_time = int(time.time() * 1000)
+            execution_time = now_in_ms
 
         if depends_on == None:
             depends_on = set()
@@ -65,22 +91,37 @@ class Orchestrator(object):
         # Drop dependencies that aren't in the set of tasks to be scheduled.
         depends_on = {dep for dep in depends_on if dep in self.tasks}
 
+        # check if the task is scheduled at a valid time. (ie, not before a dependency)
+        for dep in depends_on:
+            if self.tasks[dep]['execution_time'] > execution_time:
+                self.mutex.release()
+                raise SchedulingException("A task was scheduled to be executed before one of its dependencies")
+        
         # Add task as dependent. Needed if the parent task gets cancelled.
         for dep in depends_on:
             self.tasks[dep]['dependents'].add(task_name)
+        
+        # create filename for stdout/stderr of task
+        output_file = tempfile.mktemp(dir=self.output_directory, prefix=task_name)
 
         task = {
+            'task_name' : task_name,
             'task_path' : task_path,
             'execution_time' : execution_time,
             'depends_on' : depends_on,
-            'dependents' : set()
+            'dependents' : set(),
+            'output_file' : output_file
         }
 
         self.tasks[task_name] = task
 
+        # If there are no dependencies for this task, schedule immediately.
+        if len(depends_on) == 0:
+            self._create_executor_and_schedule(task)
+
         # We are done reading/writing to the tasks graph
         self.mutex.release()
-        return True
+        return execution_time - now_in_ms
 
     def cancel(self, task_name):
         '''
@@ -90,35 +131,44 @@ class Orchestrator(object):
 
         Arguments:
             task_name(str): The unique name of the task to be cancelled. If no such task
-            is found, then no action is taken.
+            is found, then an exception is thrown.
 
         Returns:
-            True if the task was successfully cancelled, False if unsucessful.
+            The task that was cancelled.
         '''
         self.mutex.acquire()
 
         # Can't cancel a task which doesn't exist.
         if task_name not in self.tasks:
             self.mutex.release()
-            return False
-        
+            raise SchedulingException("Task cancel failed: unable to find  \"{}\".".format(task_name))
+
+        # stop the timer if the task was scheduled. remove it from the list.
+        if task_name in self.next_to_execute:
+            self.next_to_execute.pop(task_name).cancel()
+
         # If we do not remove downstream dependencies, then cancel the dependency 
         dependents = self.tasks[task_name]['dependents']
         depends_on = self.tasks[task_name]['depends_on']
 
         # dependent tasks no longer need to wait for this one
         for dependent in dependents:
-            self.tasks[dependent]['depends_on'].remove(task_name)
+            dependent_task = self.tasks[dependent]
+            dependent_task['depends_on'].remove(task_name)
+            
+            # If a dependent was freed up, check if it can be scheduled.
+            if len(dependent_task['depends_on']) == 0:
+                self._create_executor_and_schedule(dependent_task)
 
         # this task is no longer a dependent of other tasks.
         for depends in depends_on:
             self.tasks[depends]['dependents'].remove(task_name)
 
-        self.tasks.pop(task_name)
+        cancelled_task = self.tasks.pop(task_name)
         # schedule freed up tasks here
 
         self.mutex.release()
-        return True
+        return cancelled_task
 
     def remove(self, task_name):
         '''Identical to Orchestrator.cancel
@@ -127,3 +177,47 @@ class Orchestrator(object):
         canceling a task before it has been run.
         '''
         return self.cancel(task_name)
+
+    def _create_executor_and_schedule(self, task):
+        '''Creates the timer for the task and schedules itself to be run.
+        '''
+        task_name = task['task_name']
+        executor = _TaskExecutor(task_name, self)
+
+        # Schedule the task
+        seconds_from_now = task['execution_time']/1000.0 - time.time()
+        timer = Timer(seconds_from_now, executor)
+        timer.start()
+        self.next_to_execute[task_name] = timer
+
+
+class _TaskExecutor(object):
+    def __init__(self, task_name, orchestrator):
+        '''The _TaskExecutor class is a callable which serves two purposes:
+                1) executes the python scripts once the timer runs out
+                2) removes the task from the Orchestrator's graph
+        '''
+        self.task_name = task_name
+        self.orchestrator = orchestrator
+
+    def __call__(self):
+        '''Executes the python script in the background once the task's timer completes. The 
+        output of the executed python script is sent to a file specified by the Orchestrator.
+        Arguments:
+            None
+
+        Returns:
+            None
+        '''
+        task = self.orchestrator.tasks[self.task_name]
+        task_path = task['task_path']
+        
+        # open the output file for writing
+        with open(task['output_file'], 'w+') as output_file:
+            # execute the python script in a subprocess
+            process = subprocess.Popen(['python', task_path], stdout=output_file, stderr=output_file)
+            # wait until it is finished executing to close the file.
+            process.wait()
+
+        self.orchestrator.remove(self.task_name)
+

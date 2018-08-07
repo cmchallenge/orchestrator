@@ -43,7 +43,7 @@ start = time.time() * 1000 + 3000
 
 orch = Orchestrator()
 orch.schedule("task_A", "task_A.py", execution_time = start)
-orch.schedule("task_B", "task_B.py", execution_time = start + 3000)
+orch.schedule("task_B", "task_B.py", execution_time = start + 3000, depends_on = ['task_A', 'task_B'])
 
 orch.schedule("needs_A_and_B", "wait_for_AB.py", execution_time = start + 4000)
 ```

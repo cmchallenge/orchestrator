@@ -1,15 +1,58 @@
 # Orchestrator
 
-ClearMetal runs on a distributed services architecture.  This architecture has various components that need to be synchronized to complete our daily pipeline.  
+Basic usage:
 
-In order to run this pipeline, we need an orchestrator that can schedule and synchronize tasks to be run.  
+Tasks are python scipts. A task can be scheduled for immediate execution as follows. Task names must
+be unique.
+```Python
+from orchestrator import Orchestrator
 
-Your job is to create this orchestrator.  The guidelines for the orchestrator are:
-- A task can be either recurring or one-time
-- A task can have dependencies.  For example, TaskABC may need to be executed before TaskXYZ can start
-- The result of each task run should be recorded (i.e. did the task succeed or fail)
-- You can design the tasks however you want (i.e. they can be a bash script, a python script, etc…).   
+orch = Orchestrator()
+# pass in the task name and path to python scipt
+orch.schedule("reticulate_splines", "/path/to/spline_reticulator.py")
+```
 
-We ask that you use Python for this challenge, as that is the primary language used for ClearMetal's backend.   
+Any output from a task is sent to a data directory (one is created automatically if none is specified).
+In addition, the response code for each executed task is written to the data dir to indicate whether a
+task completed successfully.
 
-This is designed to be a fairly open-ended challenge, which means there are a lot of directions you can take it (distributed task processing, complex dependency checking, graceful failures, retries, etc.).  We ask that you not spend too much time on it as we are mostly evaluating your thought process and your code design rather than a fully working framework.
+```Python
+orch = Orchestrator('path/to/data/dir')
+orch.schedule("flux_capacitation", "./my_flux_cap.py")
+```
+
+A task can be scheduled to be executed in the future by using the `execution_time` argument. It specifies
+the epoch time (in ms) at which the script should be executed. A script can be schedule to be run 3 seconds 
+from now as follows:
+```Python
+import time 
+
+start = time.time() * 1000 + 3000
+
+orch = Orchestrator()
+orch.schedule("future_hello", "./say_hello.py", execution_time = start)
+```
+
+Tasks can have dependencies. A task will not be executed until its dependency has been run, even if a 
+dependency blocks past a dependent task's scheduled execution time. Dependencies are specifies using 
+the `depends_on` parameter, which takes a list of task names:
+```Python
+import time 
+
+start = time.time() * 1000 + 3000
+
+orch = Orchestrator()
+orch.schedule("task_A", "task_A.py", execution_time = start)
+orch.schedule("task_B", "task_B.py", execution_time = start + 3000, depends_on = ['task_A', 'task_B'])
+
+orch.schedule("needs_A_and_B", "wait_for_AB.py", execution_time = start + 4000)
+```
+
+A task can be listed as recurring. The `recur_period` parameters specifies the timespan (in ms)
+between recurring executions of the task. For example, to run a task every 5.5 seconds:
+
+```Python
+orch = Orchestrator()
+orch.schedule("start_my_roomba", "./roomba_exec.py",recur_period = 5500)
+```
+

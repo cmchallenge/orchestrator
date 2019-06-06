@@ -9,7 +9,7 @@ Your job is to create this orchestrator.  The guidelines for the orchestrator ar
 - A task can have dependencies.  For example, TaskABC may need to be executed before TaskXYZ can start
 - The result of each task run should be recorded (i.e. did the task succeed or fail)
 - You can design the tasks however you want (i.e. they can be a bash script, a python script, etc…).   
-- You should have at least one test containing an example set of tasks
+- You should have at least one test that runs an example set of tasks
 
 We ask that you use Python for this challenge, as that is the primary language used for ClearMetal's backend.   
 

@@ -34,7 +34,7 @@ orch.schedule("future_hello", "./say_hello.py", execution_time = start)
 ```
 
 Tasks can have dependencies. A task will not be executed until its dependency has been run, even if a 
-dependency blocks past a dependent task's scheduled execution time. Dependencies are specifies using 
+dependency blocks past a dependent task's scheduled execution time. Dependencies are specified using 
 the `depends_on` parameter, which takes a list of task names:
 ```Python
 import time 
@@ -43,7 +43,8 @@ start = time.time() * 1000 + 3000
 
 orch = Orchestrator()
 orch.schedule("task_A", "task_A.py", execution_time = start)
-orch.schedule("task_B", "task_B.py", execution_time = start + 3000, depends_on = ['task_A', 'task_B'])
+orch.schedule("task_B", "task_B.py", execution_time = start)
+orch.schedule("task_C", "task_C.py", execution_time = start + 3000, depends_on = ['task_A', 'task_B'])
 
 orch.schedule("needs_A_and_B", "wait_for_AB.py", execution_time = start + 4000)
 ```
